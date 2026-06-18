@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EduPro Ultimate - Nền Tảng Khảo Thí Toàn Diện</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .reading-box { background: #f0fdfa; border-left: 4px solid #0d9488; padding: 20px; border-radius: 0 12px 12px 0; font-size: 0.95rem; line-height: 1.6; }
+        input[type="file"] { display: none; }
+        .sort-input { text-transform: uppercase; letter-spacing: 0.2em; text-align: center; font-weight: 900; }
+        .modal-enter-active, .modal-leave-active { transition: opacity 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased overflow-hidden">
+
+<div id="app" class="h-screen w-screen flex flex-col relative">
+    
+    <div v-if="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white z-50">
+        <i class="fa-solid fa-microchip fa-spin text-5xl text-indigo-500 mb-4"></i>
+        <p class="font-bold tracking-widest uppercase animate-pulse">Hệ thống đang đồng bộ dữ liệu...</p>
+    </div>
+
+    <transition name="modal">
+        <div v-if="analyticsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                <div class="bg-indigo-600 p-5 flex justify-between items-center text-white">
+                    <div>
+                        <h3 class="font-black text-lg"><i class="fa-solid fa-chart-pie mr-2"></i> Báo Cáo Điểm Mù (Item Analysis)</h3>
+                        <p class="text-xs text-indigo-200 mt-1">Đề thi: {{ analyticsData?.quizTitle }} (Tổng: {{ analyticsData?.totalAttempts }} lượt nộp)</p>
+                    </div>
+                    <button @click="analyticsModal = false" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-6 overflow-y-auto flex-1 bg-slate-50">
+                    <div v-if="analyticsData?.details.length === 0" class="text-center py-10 text-slate-400 font-bold">Chưa có dữ liệu thống kê câu sai.</div>
+                    <div v-else class="space-y-4">
+                        <div v-for="(stat, idx) in analyticsData.details" :key="idx" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex flex-col items-center justify-center shrink-0 border border-red-100">
+                                <span class="text-lg font-black leading-none">{{ stat.wrongCount }}</span>
+                                <span class="text-[8px] font-bold uppercase tracking-wider">Lỗi sai</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[10px] font-black text-slate-400 uppercase mb-1">CÂU HỎI SỐ {{ stat.qIndex + 1 }}</p>
+                                <p class="text-sm font-bold text-slate-700 leading-relaxed">{{ stat.qText }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+    <div v-else class="flex-1 flex h-full overflow-hidden relative">
+        
+        <aside v-if="currentUser" class="hidden md:flex flex-col w-72 bg-slate-900 text-slate-300 shadow-2xl z-40 shrink-0">
+            <div class="p-6 flex items-center space-x-4 border-b border-slate-800">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center bg-indigo-600 shadow-lg text-white text-2xl"><i class="fa-solid fa-earth-americas"></i></div>
+                <div><span class="block text-xl font-black tracking-widest text-white">EDUPRO</span><span class="block text-[10px] font-bold text-indigo-300 uppercase">Ultimate V22</span></div>
+            </div>
+            
+            <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+                <template v-if="currentUser.role === 'admin' || currentUser.role === 'teacher'">
+                    <p class="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Trung Tâm Khảo Thí</p>
+                    <button @click="adminTab = 'gradebook'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', adminTab === 'gradebook' ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-chart-line w-5"></i> <span>Sổ Điểm Khảo Thí</span></button>
+                    <button @click="adminTab = 'manage_quizzes'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', adminTab === 'manage_quizzes' ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-database w-5"></i> <span>Kho Đề & Phân Tích</span></button>
+                    <button @click="adminTab = 'manage_classes'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', adminTab === 'manage_classes' ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-chalkboard-user w-5"></i> <span>Quản Lý Lớp Học</span></button>
+                    
+                    <p class="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Cỗ Máy Soạn Đề</p>
+                    <button @click="adminTab = 'create'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', adminTab === 'create' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-laptop-code w-5"></i> <span>Studio Tạo Đề AI</span></button>
+
+                    <template v-if="currentUser.role === 'admin'">
+                        <p class="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 mt-6">Bảo Mật Hệ Thống</p>
+                        <button @click="adminTab = 'manage_teachers'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', adminTab === 'manage_teachers' ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-users-gear w-5"></i> <span>Cấp Quyền Giáo Viên</span></button>
+                    </template>
+                </template>
+                
+                <template v-if="currentUser.role === 'student'">
+                    <p class="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bàn Học Tập</p>
+                    <button @click="studentTab = 'join'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', studentTab === 'join' ? 'bg-teal-600/20 text-teal-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-pen-nib w-5"></i> <span>Vào Phòng Thi Cấp Tốc</span></button>
+                    <button @click="studentTab = 'my_classes'" :class="['w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition font-bold text-sm', studentTab === 'my_classes' ? 'bg-teal-600/20 text-teal-400' : 'hover:bg-slate-800 hover:text-white']"><i class="fa-solid fa-school w-5"></i> <span>Lớp Học Của Em</span></button>
+                </template>
+            </nav>
+
+            <div class="p-5 bg-slate-950 flex justify-between items-center border-t border-slate-800">
+                <div class="flex items-center space-x-3"><div class="w-10 h-10 rounded-full flex items-center justify-center text-white" :class="currentUser.role==='admin' ? 'bg-yellow-600' : (currentUser.role==='teacher' ? 'bg-indigo-600' : 'bg-teal-600')"><i class="fa-solid" :class="currentUser.role==='admin'?'fa-crown':(currentUser.role==='teacher'?'fa-chalkboard-user':'fa-user-graduate')"></i></div><p class="text-sm font-black text-white truncate max-w-[100px]">{{ currentUser.name }}</p></div>
+                <button @click="handleLogout" class="w-10 h-10 rounded-xl hover:bg-red-500 hover:text-white text-slate-500 transition"><i class="fa-solid fa-power-off"></i></button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto relative w-full bg-slate-50" id="main-scroll">
+            
+            <div v-if="!currentUser" class="min-h-full flex flex-col items-center justify-center bg-slate-900 p-4 relative">
+                <div v-if="joinLinkId" class="absolute top-10 w-full max-w-md bg-emerald-500 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-pulse">
+                    <i class="fa-solid fa-link text-2xl"></i>
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-wider">Có liên kết làm bài!</p>
+                        <p class="text-sm font-medium">Vui lòng đăng nhập hoặc đăng ký để vào thẳng phòng thi.</p>
+                    </div>
+                </div>
+
+                <div class="w-full max-w-md glass-panel p-8 rounded-3xl shadow-2xl border-t-4 border-indigo-500 z-10 mt-12">
+                    <div class="text-center mb-8"><h1 class="text-3xl font-black text-slate-800 tracking-tight">EDUPRO <span class="text-indigo-600">CORE</span></h1></div>
+                    
+                    <div v-if="!hasAdminAccount">
+                        <div class="bg-yellow-50 border-2 border-yellow-400 p-5 rounded-2xl mb-6 text-center shadow-inner">
+                            <p class="text-sm font-black text-yellow-800 uppercase mb-2"><i class="fa-solid fa-crown mr-1"></i> Khởi chạy hệ thống</p>
+                            <p class="text-xs text-yellow-700 font-medium">Bạn là chủ nhân hệ thống. Hãy tự thiết lập tài khoản tối cao của mình.</p>
+                        </div>
+                        <input v-model="setupAdmin.name" type="text" class="w-full p-4 bg-white border border-slate-200 rounded-xl mb-3 font-bold text-sm outline-none" placeholder="Tên hiển thị (VD: Thầy Nhật Anh)">
+                        <input v-model="setupAdmin.username" type="text" class="w-full p-4 bg-white border border-slate-200 rounded-xl mb-3 font-bold text-sm outline-none" placeholder="Tài khoản đăng nhập">
+                        <input v-model="setupAdmin.password" type="password" class="w-full p-4 bg-white border border-slate-200 rounded-xl mb-6 font-bold text-sm outline-none" placeholder="Mật khẩu">
+                        
+                        <button @click="registerAdmin" class="w-full bg-slate-900 text-white font-black py-4 rounded-xl hover:bg-indigo-600 transition shadow-lg">KHÓA HỆ THỐNG VÀ KHỞI ĐỘNG</button>
+                    </div>
+
+                    <div v-else>
+                        <div class="flex p-1 bg-slate-100 rounded-xl mb-6 border">
+                            <button @click="loginRole = 'student'; authMode = 'login'" :class="loginRole === 'student' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'" class="flex-1 py-2.5 rounded-lg font-bold text-sm transition">Học Sinh</button>
+                            <button @click="loginRole = 'teacher'; authMode = 'login'" :class="loginRole === 'teacher' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'" class="flex-1 py-2.5 rounded-lg font-bold text-sm transition">Giáo Viên</button>
+                        </div>
+
+                        <div v-if="authMode === 'login'">
+                            <input v-model="loginUsername" type="text" class="w-full p-4 bg-slate-50 border rounded-xl mb-3 font-bold focus:border-indigo-500 outline-none" placeholder="Tên đăng nhập...">
+                            <input v-model="loginPassword" type="password" @keyup.enter="handleLogin" class="w-full p-4 bg-slate-50 border rounded-xl mb-4 font-bold focus:border-indigo-500 outline-none" placeholder="Mật khẩu...">
+                            <button @click="handleLogin" class="w-full text-white font-black py-4 rounded-xl shadow-lg transition" :class="loginRole === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-teal-600 hover:bg-teal-700'">ĐĂNG NHẬP</button>
+                            
+                            <div class="mt-6 text-center border-t pt-6">
+                                <template v-if="loginRole === 'student'">
+                                    <p class="text-xs text-slate-500 font-bold mb-2">Học sinh mới chưa có tài khoản?</p>
+                                    <button @click="authMode = 'register'" class="text-teal-600 font-bold hover:underline border px-4 py-2 rounded-lg bg-teal-50">Tự Đăng Ký Tài Khoản</button>
+                                </template>
+                                <template v-else>
+                                    <p class="text-xs text-indigo-500 font-bold"><i class="fa-solid fa-lock mr-1"></i> Chỉ Admin mới có quyền tạo tài khoản Giáo viên. Vui lòng liên hệ Admin.</p>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div v-if="authMode === 'register' && loginRole === 'student'" class="space-y-3">
+                            <p class="font-black text-center mb-4 text-teal-700">TẠO TÀI KHOẢN HỌC SINH</p>
+                            <input v-model="regData.name" type="text" class="w-full p-3 bg-slate-50 border rounded-xl text-sm font-medium focus:border-teal-500 outline-none" placeholder="Họ và Tên thật (Để lưu điểm)">
+                            <input v-model="regData.username" type="text" class="w-full p-3 bg-slate-50 border rounded-xl text-sm font-medium focus:border-teal-500 outline-none" placeholder="Tên đăng nhập (viết liền không dấu)">
+                            <input v-model="regData.password" type="password" class="w-full p-3 bg-slate-50 border rounded-xl text-sm font-medium focus:border-teal-500 outline-none" placeholder="Mật khẩu">
+                            <button @click="handleRegisterStudent" class="w-full text-white font-bold py-3 rounded-xl mt-2 bg-teal-600 hover:bg-teal-700 shadow">Xác Nhận Đăng Ký</button>
+                            <button @click="authMode = 'login'" class="w-full text-slate-400 hover:text-slate-600 font-bold text-xs py-2 mt-2">Quay lại Đăng nhập</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else-if="currentUser.role === 'admin' || currentUser.role === 'teacher'" class="p-4 md:p-8 max-w-6xl mx-auto pb-24">
+                
+                <div v-if="adminTab === 'manage_teachers' && currentUser.role === 'admin'">
+                    <div class="mb-6"><h2 class="text-3xl font-black text-slate-800">Quản Lý Mạng Lưới Giáo Viên</h2><p class="text-sm font-medium text-slate-500 mt-1">Trạm cấp phát tài khoản nội bộ.</p></div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-1 bg-white p-6 rounded-3xl shadow border h-fit">
+                            <h3 class="font-black text-indigo-700 mb-4 uppercase text-sm"><i class="fa-solid fa-user-plus mr-1"></i> Cấp tài khoản mới</h3>
+                            <input v-model="newTeacher.name" type="text" class="w-full p-3 bg-slate-50 border rounded-xl mb-3 text-sm font-bold outline-none" placeholder="Tên Giáo Viên">
+                            <input v-model="newTeacher.username" type="text" class="w-full p-3 bg-slate-50 border rounded-xl mb-3 text-sm font-bold outline-none" placeholder="Tài khoản đăng nhập">
+                            <input v-model="newTeacher.password" type="text" class="w-full p-3 bg-slate-50 border rounded-xl mb-4 text-sm font-bold outline-none" placeholder="Cài đặt mật khẩu">
+                            <button @click="addTeacher" class="w-full bg-indigo-600 text-white font-black py-3 rounded-xl hover:bg-indigo-700">TẠO GIÁO VIÊN</button>
+                        </div>
+                        <div class="lg:col-span-2 bg-white rounded-3xl shadow border overflow-hidden h-fit">
+                            <div class="p-4 bg-slate-50 border-b font-black text-slate-700 text-sm">Danh sách tài khoản đã cấp</div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left whitespace-nowrap"><thead class="bg-white text-[10px] uppercase font-black text-slate-400 border-b"><tr><th class="py-3 px-4">Tên Giáo Viên</th><th class="py-3 px-4">Tài Khoản</th><th class="py-3 px-4 text-right">Tác vụ</th></tr></thead><tbody class="text-sm divide-y"><tr v-for="t in teachersList" :key="t.username" class="hover:bg-slate-50"><td class="py-3 px-4 font-bold text-slate-800"><i class="fa-solid fa-chalkboard-user text-indigo-500 mr-2"></i>{{ t.name }}</td><td class="py-3 px-4 font-mono font-bold text-indigo-700">{{ t.username }}</td><td class="py-3 px-4 text-right"><button @click="deleteTeacher(t.username)" class="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-bold text-xs border">Thu hồi</button></td></tr></tbody></table>
+                                <div v-if="teachersList.length === 0" class="p-8 text-center text-slate-400 text-sm font-bold">Chưa có giáo viên nào.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="adminTab === 'manage_classes'">
+                    <div class="mb-6"><h2 class="text-3xl font-black text-slate-800">Quản Lý Lớp Học Khép Kín</h2><p class="text-sm font-medium text-slate-500 mt-1">Học sinh dùng Mã Lớp để xin gia nhập, giáo viên phê duyệt tại đây.</p></div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-indigo-600 p-6 rounded-3xl shadow-xl text-white md:col-span-1 h-fit">
+                            <h3 class="font-black mb-4 uppercase text-sm"><i class="fa-solid fa-plus-circle mr-1"></i> Mở Lớp Học Mới</h3>
+                            <input v-model="newClass.name" type="text" class="w-full p-3 bg-white/10 border border-white/20 rounded-xl mb-4 text-sm font-bold text-white outline-none placeholder:text-indigo-300" placeholder="Tên lớp (VD: IELTS K10)...">
+                            <button @click="createClass" class="w-full bg-white text-indigo-900 font-black py-3 rounded-xl hover:bg-indigo-50 shadow-md">TẠO LỚP NGAY</button>
+                        </div>
+                        <div class="md:col-span-2 space-y-4">
+                            <div v-for="c in classesList.filter(x => currentUser.role === 'admin' || x.teacherId === currentUser.username)" :key="c.id" class="bg-white p-5 rounded-2xl shadow border border-slate-200">
+                                <div class="flex justify-between items-start mb-4 border-b pb-4">
+                                    <div>
+                                        <h4 class="text-lg font-black text-slate-800"><i class="fa-solid fa-users text-indigo-500 mr-2"></i>{{ c.name }}</h4>
+                                        <p class="text-xs text-slate-500 mt-1 font-bold">Giáo viên quản lý: {{ c.teacherName }}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-2 cursor-pointer shadow-sm" @click="copyClassCode(c.id)">
+                                            <span class="text-[10px] font-black uppercase">Mã xin vào Lớp:</span><span class="font-mono font-black tracking-widest text-base">{{ c.id }}</span><i class="fa-regular fa-copy"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                                        <p class="text-[10px] font-black text-amber-700 uppercase mb-2">Đang chờ duyệt ({{ (c.pending || []).length }})</p>
+                                        <div v-if="(c.pending || []).length === 0" class="text-xs font-medium text-amber-600/50 italic">Không có yêu cầu nào.</div>
+                                        <div v-for="stuUser in c.pending" :key="stuUser" class="flex justify-between items-center bg-white p-2 rounded-lg border shadow-sm mb-2">
+                                            <span class="text-xs font-bold text-slate-700">{{ getStudentName(stuUser) }}</span>
+                                            <button @click="approveStudent(c.id, stuUser)" class="text-[10px] font-black bg-emerald-500 text-white px-2 py-1 rounded hover:bg-emerald-600 shadow">DUYỆT</button>
+                                        </div>
+                                    </div>
+                                    <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                                        <p class="text-[10px] font-black text-emerald-700 uppercase mb-2">Thành viên chính thức ({{ (c.students || []).length }})</p>
+                                        <div v-if="(c.students || []).length === 0" class="text-xs font-medium text-emerald-600/50 italic">Lớp chưa có học sinh.</div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <span v-for="stuUser in c.students" :key="stuUser" class="bg-white text-emerald-800 border border-emerald-200 text-xs font-bold px-2 py-1 rounded-md shadow-sm"><i class="fa-solid fa-user-check mr-1 text-emerald-500"></i>{{ getStudentName(stuUser) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="classesList.filter(x => currentUser.role === 'admin' || x.teacherId === currentUser.username).length === 0" class="text-center p-10 bg-white rounded-3xl border border-dashed border-slate-300 text-slate-400 font-bold">Thầy chưa tạo lớp học nào.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="adminTab === 'create'">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-3xl font-black text-slate-800">Studio Đóng Gói Đề Thi</h2>
+                            <p class="text-xs font-bold text-indigo-600 uppercase mt-1">Hỗ trợ cấu trúc THPT 2025 & IELTS</p>
+                        </div>
+                        <button v-if="studioMode" @click="studioMode = false" class="bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg hover:bg-slate-300 shadow">Thoát Studio</button>
+                    </div>
+                    
+                    <div v-if="!studioMode" class="bg-white p-6 md:p-8 rounded-3xl shadow border border-slate-200">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-black text-slate-500 uppercase mb-2">Tiêu đề bài kiểm tra</label>
+                                <input v-model="newQuiz.title" type="text" class="w-full p-4 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none" placeholder="VD: Đề thi thử THPT Quốc gia 2025...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase mb-2">Thời gian (Phút)</label>
+                                <input v-model.number="newQuiz.timeLimit" type="number" class="w-full p-4 bg-slate-50 border rounded-xl font-bold text-indigo-600 focus:border-indigo-500 outline-none" placeholder="0 = Tự do">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-500 uppercase mb-2">Thang Điểm Tối Đa</label>
+                                <select v-model.number="newQuiz.maxScore" class="w-full p-4 bg-slate-50 border rounded-xl font-black text-emerald-600 focus:border-indigo-500 outline-none">
+                                    <option value="10">Thang điểm 10 (Chuẩn VN)</option>
+                                    <option value="100">Thang điểm 100</option>
+                                    <option value="9">Thang điểm 9.0 (IELTS)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <div class="flex-1 border-r md:pr-6">
+                                <label class="block text-xs font-black text-indigo-600 uppercase mb-2"><i class="fa-solid fa-robot mr-1"></i> Tự động bóc tách từ văn bản</label>
+                                <p class="text-[10px] font-bold text-slate-400 mb-2 leading-relaxed">Copy từ file Word dán vào đây. Nhấn Enter 2 lần để cách câu.</p>
+                                <textarea v-model="newQuiz.rawText" rows="10" class="w-full p-4 bg-slate-50 border rounded-xl outline-none font-mono text-sm focus:border-indigo-500 mb-3" placeholder="Đoạn văn: ...&#10;&#10;Câu 1: ...&#10;A. ...&#10;Đáp án: A"></textarea>
+                                <button @click="processToStudioSafe" class="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 shadow-md">Đưa Dữ Liệu Vào Studio Trực Quan</button>
+                            </div>
+                            <div class="md:w-1/3 flex flex-col justify-center bg-slate-50 p-6 rounded-2xl border border-dashed border-slate-300 text-center">
+                                <div class="w-16 h-16 bg-white shadow rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-indigo-500"><i class="fa-solid fa-layer-group"></i></div>
+                                <h3 class="font-black text-slate-700 mb-2">Soạn Đề Thủ Công Đa Dạng</h3>
+                                <div class="flex items-center justify-center gap-2 mb-4 mt-2">
+                                    <input v-model.number="manualQuestionCount" type="number" min="1" class="w-16 p-2 border rounded-lg text-center font-bold text-indigo-600 outline-none">
+                                    <span class="text-sm font-bold text-slate-600">câu hỏi</span>
+                                </div>
+                                <button @click="startManualStudio" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700 shadow-md">Tạo Khung Canvas Trống</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="studioMode" class="bg-slate-50 rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+                        <div class="bg-slate-900 p-4 flex justify-between items-center text-white">
+                            <div class="font-black"><i class="fa-solid fa-gears text-indigo-400 mr-2"></i> BẢNG KIỂM DUYỆT CÂU HỎI</div>
+                            <div class="text-sm font-bold bg-white/20 px-3 py-1 rounded-lg">{{ parsedQuestions.length }} Câu</div>
+                        </div>
+                        
+                        <div class="p-4 md:p-6 space-y-6">
+                            <div v-for="(q, index) in parsedQuestions" :key="index" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative">
+                                <div class="absolute -top-3 -left-3 w-8 h-8 bg-slate-800 text-white font-black rounded-lg flex items-center justify-center shadow">{{ index + 1 }}</div>
+                                <button @click="parsedQuestions.splice(index, 1)" class="absolute top-4 right-4 text-slate-300 hover:text-red-500"><i class="fa-solid fa-trash-can text-lg"></i></button>
+                                
+                                <div class="flex flex-wrap gap-4 mb-5 pb-4 border-b border-slate-100 items-end">
+                                    <div class="flex-1 min-w-[220px]">
+                                        <label class="block text-[10px] font-black text-indigo-500 uppercase mb-1">Cấu trúc / Dạng bài</label>
+                                        <select v-model="q.type" class="w-full p-2.5 border border-indigo-200 rounded-lg text-sm font-bold bg-indigo-50 text-indigo-900 outline-none">
+                                            <option value="trắc nghiệm">Trắc Nghiệm (A, B, C, D)</option>
+                                            <option value="tfng">IELTS: True / False / Not Given</option>
+                                            <option value="sắp xếp">THPT: Sắp xếp Trật tự (A-B-C-D)</option>
+                                            <option value="chèn câu">THPT: Chèn câu vào đoạn [I], [II]</option>
+                                            <option value="điền khuyết">Điền Khuyết (Cloze Test / Từ vựng)</option>
+                                            <option value="tự luận">Tự Luận (Essay)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <label class="flex items-center text-xs font-bold text-slate-600 cursor-pointer bg-slate-50 px-3 py-2.5 rounded-lg border hover:bg-slate-100 transition"><input type="checkbox" v-model="q.hasPassage" class="mr-2"> Kèm Bài Đọc</label>
+                                        <label class="flex items-center text-xs font-bold text-slate-600 cursor-pointer bg-slate-50 px-3 py-2.5 rounded-lg border hover:bg-slate-100 transition">
+                                            <i class="fa-solid fa-image mr-1"></i> Tải Ảnh
+                                            <input type="file" accept="image/*" @change="handleImageUpload($event, q)">
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <textarea v-if="q.hasPassage" v-model="q.passage" rows="4" class="w-full p-4 border border-teal-200 rounded-xl text-sm mb-4 font-medium bg-teal-50/30 outline-none focus:border-teal-500" placeholder="Soạn nội dung bài đọc dài (Reading Comprehension / Cloze test) vào đây..."></textarea>
+                                <div v-if="q.hasImage && q.imageUrl" class="mb-4 relative inline-block"><img :src="q.imageUrl" class="max-h-48 rounded-xl border border-slate-200 shadow-sm"><button @click="q.hasImage = false; q.imageUrl = ''" class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center shadow"><i class="fa-solid fa-xmark text-xs"></i></button></div>
+
+                                <div class="mb-4">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Văn bản câu hỏi / Yêu cầu</label>
+                                    <textarea v-model="q.question" rows="2" class="w-full p-4 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 shadow-inner bg-slate-50" placeholder="VD: Mark the correct letter to indicate the best arrangement..."></textarea>
+                                </div>
+
+                                <div v-if="q.type === 'trắc nghiệm' || q.type === 'chèn câu'" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 bg-white border border-slate-200 p-4 rounded-xl">
+                                    <div v-for="(opt, oIdx) in q.options" :key="oIdx" class="flex items-center bg-slate-50 border rounded-lg overflow-hidden focus-within:border-indigo-500">
+                                        <div class="bg-slate-200 px-3 py-2.5 font-black text-slate-500 border-r text-xs">{{ String.fromCharCode(65 + oIdx) }}</div>
+                                        <input v-model="q.options[oIdx]" class="w-full p-2.5 text-sm font-medium outline-none bg-transparent">
+                                        <button @click="q.options.splice(oIdx, 1)" class="px-3 text-slate-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                    <button @click="q.options.push('')" class="p-2.5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 text-sm font-bold hover:bg-slate-100 flex items-center justify-center">+ Thêm phương án</button>
+                                </div>
+
+                                <div v-if="q.type === 'sắp xếp'" class="mb-4 bg-orange-50/50 border border-orange-200 p-4 rounded-xl text-center text-sm font-bold text-orange-700">Dạng bài học sinh điền chuỗi ký tự sắp xếp (ví dụ: c-a-d-b)</div>
+                                <div v-if="q.type === 'tfng'" class="flex gap-2 mb-4 justify-center"><span class="bg-white text-indigo-700 px-4 py-2 rounded-lg text-xs font-black border shadow-sm">TRUE</span><span class="bg-white text-pink-700 px-4 py-2 rounded-lg text-xs font-black border shadow-sm">FALSE</span><span class="bg-white text-slate-600 px-4 py-2 rounded-lg text-xs font-black border shadow-sm">NOT GIVEN</span></div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label class="block text-[10px] font-black text-emerald-600 uppercase mb-1">Đáp án Chính xác</label><input v-model="q.answer" type="text" class="w-full p-3 border border-emerald-300 rounded-xl text-sm font-black bg-emerald-50 text-emerald-800 outline-none focus:border-emerald-500" placeholder="A, True, hoặc b-a-c-d ..."></div>
+                                    <div><label class="block text-[10px] font-black text-amber-600 uppercase mb-1">Lời giải chi tiết</label><input v-model="q.explanation" type="text" class="w-full p-3 border border-amber-300 rounded-xl text-sm font-medium bg-amber-50 text-amber-900 outline-none focus:border-amber-500" placeholder="Hiện ra sau khi nộp bài..."></div>
+                                </div>
+                            </div>
+                            <button @click="parsedQuestions.push(getBlankQuestion())" class="w-full py-5 bg-white border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 font-black hover:bg-slate-100 transition"><i class="fa-solid fa-plus-circle text-xl mr-2"></i> THÊM 1 CÂU HỎI VÀO ĐỀ</button>
+                        </div>
+                        <div class="p-6 bg-white border-t flex justify-end">
+                            <button @click="publishQuizToCloud" class="w-full md:w-auto bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-10 py-4 rounded-xl font-black shadow-xl hover:shadow-2xl transition text-lg uppercase tracking-wider"><i class="fa-solid fa-cloud-arrow-up mr-2"></i> Xuất Bản Đề Thi Lên Mạng</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="adminTab === 'gradebook'" class="bg-white rounded-3xl shadow p-6 md:p-8">
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-2xl font-black text-slate-800">Sổ Điểm Điện Tử</h2><button @click="exportToCSV" class="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold shadow"><i class="fa-solid fa-file-excel mr-2"></i> Tải Excel</button></div>
+                    <div class="overflow-x-auto"><table class="w-full text-left whitespace-nowrap"><thead class="bg-slate-50 text-xs uppercase font-black text-slate-500"><tr><th class="py-3 px-4">Ngày</th><th class="py-3 px-4">Học Sinh</th><th class="py-3 px-4">Bài Thi</th><th class="py-3 px-4 text-center">Điểm Hệ Thống</th></tr></thead><tbody class="text-sm"><tr v-for="s in reversedScores" :key="s.time" class="border-t hover:bg-slate-50"><td class="py-3 px-4 text-xs text-slate-400">{{ s.time }}</td><td class="py-3 px-4 font-bold">{{ s.studentName }}</td><td class="py-3 px-4">{{ s.quizTitle }}</td><td class="py-3 px-4 text-center font-black text-blue-600 bg-blue-50/50"><span class="text-lg">{{ s.score }}</span><span class="text-[10px] text-slate-400 block font-medium">Đúng {{ s.rawScore }}/{{ s.totalGradeable }} câu</span></td></tr></tbody></table></div>
+                </div>
+
+                <div v-if="adminTab === 'manage_quizzes'" class="bg-white rounded-3xl shadow p-6 md:p-8">
+                    <h2 class="text-2xl font-black text-slate-800 mb-6">Kho Đề Thi & Phân Tích Dữ Liệu</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap">
+                            <thead class="bg-slate-50 text-xs uppercase font-black text-slate-500 border-b">
+                                <tr><th class="py-3 px-4">Mã Đề</th><th class="py-3 px-4">Tiêu đề</th><th class="py-3 px-4">Thang Điểm</th><th class="py-3 px-4 text-right">Tác vụ Quản trị & Phân Tích</th></tr>
+                            </thead>
+                            <tbody class="text-sm divide-y">
+                                <tr v-for="q in dbQuizzes" :key="q.id" class="hover:bg-slate-50 transition">
+                                    <td class="py-3 px-4">
+                                        <span class="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded cursor-pointer border border-indigo-100 shadow-sm" @click="copy(q.id)" title="Copy Mã Đề">{{ q.id }}</span>
+                                    </td>
+                                    <td class="py-3 px-4 font-bold text-slate-800">{{ q.title }}</td>
+                                    <td class="py-3 px-4 font-black text-emerald-600">{{ q.maxScore || 10 }}</td>
+                                    <td class="py-3 px-4 flex gap-2 justify-end">
+                                        <button @click="copyShareLink(q.id)" class="text-teal-600 bg-teal-50 px-3 py-1.5 rounded font-bold hover:bg-teal-100 border border-teal-200 transition text-xs shadow-sm"><i class="fa-solid fa-link mr-1"></i> Gửi Link</button>
+                                        <button @click="showAnalytics(q)" class="text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded font-bold hover:bg-indigo-100 border border-indigo-200 transition text-xs shadow-sm"><i class="fa-solid fa-magnifying-glass-chart mr-1"></i> Phân Tích</button>
+                                        <button @click="deleteQuiz(q.id)" class="text-red-500 font-bold px-3 py-1.5 bg-red-50 rounded hover:bg-red-100 border border-red-100 transition text-xs shadow-sm"><i class="fa-solid fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else-if="currentUser.role === 'student'" class="p-4 md:p-8 max-w-5xl mx-auto pb-24">
+                
+                <div v-if="studentTab === 'my_classes'" class="space-y-6">
+                    <div class="bg-white p-8 rounded-3xl shadow-xl border-t-4 border-indigo-500 text-center max-w-md mx-auto">
+                        <h2 class="text-2xl font-black text-slate-800 mb-2">Tham Gia Lớp Học</h2>
+                        <p class="text-sm text-slate-500 mb-6">Xin mã lớp từ Giáo viên để tham gia</p>
+                        <input v-model="joinClassId" type="text" class="w-full px-4 py-3 bg-slate-50 border-2 rounded-xl text-center font-mono text-2xl font-black uppercase tracking-widest mb-4 focus:border-indigo-500 outline-none" placeholder="MÃ LỚP">
+                        <button @click="requestJoinClass" class="w-full bg-indigo-600 text-white font-black py-4 rounded-xl shadow hover:bg-indigo-700 transition">GỬI YÊU CẦU THAM GIA</button>
+                    </div>
+
+                    <h3 class="text-xl font-black text-slate-800 mt-8 mb-4 border-b pb-2">Lớp Học Của Em</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div v-for="c in classesList" :key="c.id" v-show="(c.students||[]).includes(currentUser.username) || (c.pending||[]).includes(currentUser.username)" class="bg-white p-6 rounded-2xl shadow border flex items-center justify-between">
+                            <div>
+                                <h4 class="text-lg font-black text-slate-800"><i class="fa-solid fa-chalkboard-user text-indigo-500 mr-2"></i>{{ c.name }}</h4>
+                                <p class="text-xs text-slate-500 mt-1">Giáo viên: {{ c.teacherName }}</p>
+                            </div>
+                            <span v-if="(c.students||[]).includes(currentUser.username)" class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-xs font-black border border-emerald-200 shadow-sm"><i class="fa-solid fa-check-circle mr-1"></i> Đã Duyệt</span>
+                            <span v-else class="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-xs font-black border border-amber-200 shadow-sm"><i class="fa-solid fa-hourglass-half mr-1"></i> Chờ duyệt</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="studentTab === 'join'">
+                    <div v-if="!activeQuiz" class="bg-white p-8 rounded-3xl shadow-xl border-t-4 border-teal-500 text-center max-w-md mx-auto mt-10">
+                        <h2 class="text-2xl font-black text-slate-800 mb-2">Bàn Học Trực Tuyến</h2>
+                        <p class="text-sm text-slate-500 mb-6">Nhập mã phòng thi hoặc vào từ Link</p>
+                        <input v-model="joinLinkId" @keyup.enter="loadQuiz" type="text" class="w-full px-4 py-4 bg-slate-50 border-2 rounded-xl text-center font-mono text-4xl font-black uppercase tracking-widest mb-4 focus:border-teal-500 outline-none text-slate-800">
+                        <button @click="loadQuiz" class="w-full bg-slate-900 text-white font-black py-4 rounded-xl shadow hover:bg-teal-600 transition tracking-widest">TRUY XUẤT ĐỀ</button>
+                    </div>
+
+                    <div v-else class="bg-white p-4 md:p-8 rounded-3xl shadow-xl">
+                        <div class="border-b pb-4 mb-6 sticky top-0 bg-white/95 backdrop-blur z-30 pt-2 flex justify-between items-center">
+                            <h2 class="text-xl font-black text-slate-800">{{ activeQuiz.title }}</h2>
+                            <div class="flex items-center gap-3">
+                                <span v-if="activeQuiz.timeLimit > 0 && !quizSubmitted" class="bg-slate-900 text-white px-3 py-1.5 rounded font-black font-mono text-sm shadow"><i class="fa-solid fa-stopwatch mr-1 text-teal-400"></i>{{ formattedTime }}</span>
+                                <button @click="exitQuiz" class="text-xs font-bold text-slate-500 hover:text-red-500 bg-slate-100 hover:bg-red-50 px-3 py-1.5 rounded-lg border transition">Thoát</button>
+                            </div>
+                        </div>
+
+                        <div v-if="quizSubmitted" class="bg-slate-900 p-6 rounded-3xl mb-8 text-center border-b-4 border-teal-500 shadow-2xl overflow-hidden relative">
+                            <i class="fa-solid fa-ranking-star absolute -bottom-4 -right-4 text-9xl text-slate-800/50"></i>
+                            <h3 class="text-sm font-black text-teal-400 mb-3 tracking-widest uppercase relative z-10">Bảng Tổng Sắp Điểm Số</h3>
+                            <div class="inline-flex items-baseline bg-slate-800 px-8 py-3 rounded-2xl border border-slate-700 relative z-10 shadow-inner">
+                                <span class="text-6xl font-black text-white">{{ finalScore }}</span>
+                                <span class="text-xl text-slate-500 ml-1 font-black">/ {{ activeQuiz.maxScore || 10 }}</span>
+                            </div>
+                            <p class="text-slate-400 font-medium text-xs mt-3 relative z-10">Bạn đã trả lời đúng <b class="text-emerald-400">{{ rawScore }}</b> trên tổng số <b class="text-white">{{ gradeableCount }}</b> câu hỏi.</p>
+                        </div>
+
+                        <div class="space-y-8">
+                            <div v-for="(q, index) in activeQuiz.questions" :key="index" class="bg-white p-5 md:p-6 rounded-2xl border-2 transition" :class="quizSubmitted ? (isCorrect(index) ? 'border-emerald-100 bg-emerald-50/20' : 'border-red-100 bg-red-50/20') : 'border-slate-200 shadow-sm hover:border-teal-200'">
+                                
+                                <div v-if="q.hasPassage && q.passage" class="mb-5 reading-box text-[15px] font-medium text-slate-700 whitespace-pre-wrap shadow-sm">
+                                    <span class="text-[10px] font-black uppercase text-teal-700 block mb-2"><i class="fa-solid fa-book-open text-teal-500 mr-1"></i> Đoạn văn / Context</span>
+                                    {{ q.passage }}
+                                </div>
+                                
+                                <div v-if="q.hasImage && q.imageUrl" class="mb-5 flex justify-center"><img :src="q.imageUrl" class="max-h-72 rounded-xl shadow border p-1 bg-white object-contain"></div>
+
+                                <div class="flex items-start mb-4">
+                                    <div class="bg-slate-800 text-white px-2 py-1 rounded font-black text-[10px] mr-3 mt-1 shrink-0">CÂU {{ index + 1 }}</div>
+                                    <p class="font-bold text-[15px] md:text-[16px] text-slate-800 flex-1 leading-relaxed">{{ q.question }}</p>
+                                    <div v-if="quizSubmitted && q.answer" class="ml-3 shrink-0 text-xl"><i v-if="isCorrect(index)" class="fa-solid fa-circle-check text-emerald-500 drop-shadow"></i><i v-else class="fa-solid fa-circle-xmark text-red-500 drop-shadow"></i></div>
+                                </div>
+                                
+                                <div class="pl-0 md:pl-12">
+                                    <div v-if="q.type === 'trắc nghiệm' || q.type === 'chèn câu'" class="grid gap-2">
+                                        <label v-for="(opt, oIdx) in q.options" :key="oIdx" class="flex items-center p-3.5 border-2 rounded-xl text-sm font-medium cursor-pointer transition" :class="[(!quizSubmitted && studentAnswers[index] === getOptionLetter(opt)) ? 'bg-teal-50 border-teal-500 shadow-sm' : 'border-slate-100 bg-white hover:bg-slate-50', (quizSubmitted && studentAnswers[index] === getOptionLetter(opt) && getOptionLetter(opt) === q.answer.toUpperCase()) ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-bold shadow-inner' : '', (quizSubmitted && studentAnswers[index] === getOptionLetter(opt) && getOptionLetter(opt) !== q.answer.toUpperCase()) ? 'border-red-400 bg-red-50 text-red-800 font-bold shadow-inner' : '', (quizSubmitted && studentAnswers[index] !== getOptionLetter(opt) && getOptionLetter(opt) === q.answer.toUpperCase()) ? 'border-emerald-500 border-dashed bg-emerald-50' : '']">
+                                            <input type="radio" :name="'q'+index" :value="getOptionLetter(opt)" v-model="studentAnswers[index]" class="w-4 h-4 text-teal-600 border-slate-300 mr-4 accent-teal-600" :disabled="quizSubmitted">
+                                            <span :class="{'font-bold text-slate-900': studentAnswers[index] === getOptionLetter(opt)}">{{ opt }}</span>
+                                        </label>
+                                    </div>
+
+                                    <div v-else-if="q.type === 'sắp xếp'">
+                                        <input v-model="studentAnswers[index]" type="text" class="w-full max-w-[200px] p-4 bg-slate-50 border-2 rounded-xl outline-none text-lg sort-input focus:border-orange-500 focus:bg-white transition shadow-inner" placeholder="_-_-_-_" :disabled="quizSubmitted" :class="{'border-emerald-500 bg-emerald-50 text-emerald-700': quizSubmitted && isCorrect(index), 'border-red-400 bg-red-50 text-red-700': quizSubmitted && !isCorrect(index) && studentAnswers[index]}">
+                                    </div>
+
+                                    <div v-else-if="q.type === 'tfng'" class="flex flex-wrap gap-3">
+                                        <label v-for="opt in ['True', 'False', 'Not Given']" class="flex-1 text-center p-3.5 border-2 rounded-xl text-sm font-bold cursor-pointer transition shadow-sm" :class="[(!quizSubmitted && studentAnswers[index] === opt) ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-100 bg-white hover:bg-slate-50', (quizSubmitted && opt.toLowerCase() === (q.answer||'').toLowerCase()) ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : (quizSubmitted && studentAnswers[index] === opt && opt.toLowerCase() !== (q.answer||'').toLowerCase() ? 'border-red-400 bg-red-50 text-red-700' : '')]">
+                                            <input type="radio" :name="'q'+index" :value="opt" v-model="studentAnswers[index]" class="hidden" :disabled="quizSubmitted">
+                                            {{ opt }}
+                                        </label>
+                                    </div>
+
+                                    <div v-else>
+                                        <textarea v-if="q.type === 'tự luận'" v-model="studentAnswers[index]" rows="3" class="w-full p-4 bg-slate-50 border-2 rounded-xl outline-none text-sm font-medium focus:border-teal-500 shadow-inner" :disabled="quizSubmitted" :class="{'border-emerald-500 bg-emerald-50': quizSubmitted && isCorrect(index), 'border-red-400 bg-red-50': quizSubmitted && !isCorrect(index) && studentAnswers[index]}"></textarea>
+                                        <input v-else v-model="studentAnswers[index]" type="text" class="w-full p-4 bg-slate-50 border-2 rounded-xl outline-none font-bold text-sm focus:border-teal-500 shadow-inner" :disabled="quizSubmitted" :class="{'border-emerald-500 bg-emerald-50 text-emerald-700': quizSubmitted && isCorrect(index), 'border-red-400 bg-red-50 text-red-700': quizSubmitted && !isCorrect(index) && studentAnswers[index]}">
+                                    </div>
+                                </div>
+                                
+                                <div v-if="quizSubmitted && (q.answer || q.explanation)" class="mt-5 pt-4 border-t border-slate-200 md:ml-12">
+                                    <div v-if="q.answer && q.type !== 'trắc nghiệm'" class="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg mb-3 inline-block shadow-sm"><i class="fa-solid fa-key mr-1"></i> ĐÁP ÁN CHUẨN: {{ q.answer }}</div>
+                                    <div v-if="q.explanation" class="text-sm font-medium text-amber-900 bg-gradient-to-r from-amber-50 to-yellow-50/50 border border-amber-200 px-4 py-3.5 rounded-xl shadow-sm leading-relaxed"><i class="fa-solid fa-lightbulb text-amber-500 mr-2"></i> <b>Bình duyệt:</b> {{ q.explanation }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="!quizSubmitted" class="text-center mt-10 sticky bottom-4 z-20">
+                            <button @click="executeSubmit" class="bg-slate-900 text-white font-black py-4.5 px-12 rounded-full shadow-2xl hover:bg-slate-800 text-base uppercase w-full md:w-auto tracking-widest transition transform hover:-translate-y-1"><i class="fa-solid fa-paper-plane mr-2"></i> KẾT THÚC & NỘP BÀI</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    // KHO DỮ LIỆU CỦA THẦY NHẬT ANH
+    const firebaseConfig = {
+        apiKey: "AIzaSyAooKMHy-CELa20HyxI_X545F204khuxho",
+        authDomain: "homework-1607c.firebaseapp.com",
+        projectId: "homework-1607c",
+        storageBucket: "homework-1607c.firebasestorage.app",
+        messagingSenderId: "541270304589",
+        appId: "1:541270304589:web:4bf4be335ea8f73fc07904"
+    };
+
+    let app, db;
+    try { app = initializeApp(firebaseConfig); db = getFirestore(app); } catch(e) { console.error("Lỗi Khởi tạo"); }
+
+    const { createApp } = Vue;
+    createApp({
+        data() {
+            return {
+                loading: true, currentUser: null, loginRole: 'student', authMode: 'login',
+                hasAdminAccount: false,
+                
+                setupAdmin: { name: '', username: '', password: '', inviteCode: '' }, 
+                regData: { name: '', username: '', password: '' }, regTeacherCode: '', loginUsername: '', loginPassword: '', 
+                
+                // Trạm Quản trị
+                adminTab: 'create', studentTab: 'join',
+                newTeacher: { name: '', username: '', password: '' },
+                newClass: { name: '' }, joinClassId: '',
+                
+                // Studio Data (Đã thêm maxScore)
+                studioMode: false, newQuiz: { title: '', timeLimit: 0, maxScore: 10, rawText: '' }, parsedQuestions: [], manualQuestionCount: 1,
+                
+                // Student Work
+                joinLinkId: '', activeQuiz: null, studentAnswers: {}, quizSubmitted: false, 
+                finalScore: 0, rawScore: 0, gradeableCount: 0, timerInterval: null, timeRemaining: 0,
+                
+                // Phân tích Dữ liệu
+                analyticsModal: false, analyticsData: null,
+                
+                // Database
+                teachersList: [], studentsList: [], dbQuizzes: [], scoresList: [], classesList: []
+            }
+        },
+        computed: {
+            reversedScores() { return [...this.scoresList].reverse(); },
+            formattedTime() {
+                if (this.timeRemaining <= 0) return "00:00";
+                const m = Math.floor(this.timeRemaining / 60).toString().padStart(2, '0');
+                const s = (this.timeRemaining % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            }
+        },
+        async mounted() {
+            try {
+                const session = localStorage.getItem('edu_v22_session');
+                if(session) this.currentUser = JSON.parse(session);
+                
+                // Đọc Link Chia sẻ (Deep Link ?quiz=XXXXXX)
+                const urlParams = new URLSearchParams(window.location.search);
+                const quizParam = urlParams.get('quiz');
+                if(quizParam) { this.joinLinkId = quizParam; this.studentTab = 'join'; }
+
+                await this.loadData();
+                
+                // Tự động load đề nếu có link chia sẻ và là học sinh
+                if(this.joinLinkId && this.currentUser && this.currentUser.role === 'student') {
+                    this.loadQuiz();
+                }
+            } catch(e) {} finally { this.loading = false; }
+        },
+        methods: {
+            async loadData() {
+                if(!db) return;
+                const adminDoc = await getDoc(doc(db, "sys", "admin"));
+                if(adminDoc.exists()) { this.hasAdminAccount = true; this.setupAdmin = adminDoc.data(); } else { this.hasAdminAccount = false; }
+                
+                const tcSnap = await getDocs(collection(db, "teachers")); this.teachersList = tcSnap.docs.map(d=>d.data());
+                const stSnap = await getDocs(collection(db, "students")); this.studentsList = stSnap.docs.map(d=>d.data());
+                const qzSnap = await getDocs(collection(db, "quizzes")); this.dbQuizzes = qzSnap.docs.map(d=>d.data());
+                const scSnap = await getDocs(collection(db, "scores")); this.scoresList = scSnap.docs.map(d=>d.data());
+                const clsSnap = await getDocs(collection(db, "classes")); this.classesList = clsSnap.docs.map(d=>d.data());
+            },
+
+            // --- ADMIN KHỞI TẠO VÀ QUẢN LÝ TÀI KHOẢN ---
+            async registerAdmin() {
+                if(!this.setupAdmin.username || !this.setupAdmin.password || !this.setupAdmin.inviteCode) return alert("Vui lòng điền ĐẦY ĐỦ!");
+                const adminObj = { name: this.setupAdmin.name || 'Master Admin', username: this.setupAdmin.username.toLowerCase().trim(), password: this.setupAdmin.password, inviteCode: this.setupAdmin.inviteCode, role: 'admin' };
+                await setDoc(doc(db, "sys", "admin"), adminObj);
+                this.hasAdminAccount = true; this.loginRole = 'teacher'; this.authMode = 'login';
+            },
+            async addTeacher() {
+                const u = this.newTeacher.username.toLowerCase().trim();
+                if(this.teachersList.some(t => t.username === u) || u === this.setupAdmin.username) return alert("Tên đăng nhập này đã tồn tại!");
+                const tObj = { name: this.newTeacher.name, username: u, password: this.newTeacher.password, role: 'teacher' };
+                await setDoc(doc(db, "teachers", u), tObj); this.teachersList.push(tObj); this.newTeacher = { name: '', username: '', password: '' };
+            },
+            async deleteTeacher(username) { if(confirm("Thu hồi tài khoản Giáo viên này?")) { await deleteDoc(doc(db, "teachers", username)); this.teachersList = this.teachersList.filter(t => t.username !== username); } },
+            
+            // --- HỆ THỐNG LỚP HỌC KÉP ---
+            async createClass() {
+                if(!this.newClass.name) return alert("Vui lòng điền tên lớp!");
+                const id = Math.random().toString(36).substring(2,7).toUpperCase();
+                const clsObj = { id, name: this.newClass.name, teacherId: this.currentUser.username, teacherName: this.currentUser.name, students: [], pending: [] };
+                await setDoc(doc(db, "classes", id), clsObj); this.classesList.push(clsObj); this.newClass.name = ''; alert("Đã mở Lớp! Mã lớp của bạn là: " + id);
+            },
+            async requestJoinClass() {
+                const id = this.joinClassId.trim().toUpperCase(); if(!id) return;
+                const cls = this.classesList.find(c => c.id === id);
+                if(!cls) return alert("Mã lớp không tồn tại!");
+                if((cls.students||[]).includes(this.currentUser.username) || (cls.pending||[]).includes(this.currentUser.username)) return alert("Bạn đã gửi yêu cầu hoặc đang ở trong lớp này rồi!");
+                
+                cls.pending = cls.pending || []; cls.pending.push(this.currentUser.username);
+                await updateDoc(doc(db, "classes", id), { pending: cls.pending });
+                this.joinClassId = ''; alert("Đã gửi yêu cầu! Vui lòng chờ Giáo viên duyệt.");
+            },
+            async approveStudent(classId, studentUsername) {
+                const cls = this.classesList.find(c => c.id === classId);
+                cls.pending = cls.pending.filter(u => u !== studentUsername);
+                cls.students = cls.students || []; cls.students.push(studentUsername);
+                await updateDoc(doc(db, "classes", classId), { pending: cls.pending, students: cls.students });
+            },
+            getStudentName(username) { const s = this.studentsList.find(x => x.username === username); return s ? s.name : username; },
+            copyClassCode(id) { navigator.clipboard.writeText(id); alert("Đã copy mã lớp!"); },
+
+            // --- AUTHENTICATION ---
+            async handleRegisterStudent() {
+                if(!this.regData.username || !this.regData.password) return alert("Vui lòng điền đủ thông tin!");
+                const u = this.regData.username.toLowerCase().trim();
+                if(this.studentsList.some(s => s.username === u)) return alert("Tài khoản đã có người dùng!");
+                const sObj = { name: this.regData.name, username: u, password: this.regData.password, role: 'student' };
+                await setDoc(doc(db, "students", u), sObj); this.studentsList.push(sObj); this.currentUser = sObj;
+                localStorage.setItem('edu_v22_session', JSON.stringify(this.currentUser)); this.regData = { name: '', username: '', password: '' };
+                if(this.joinLinkId) this.loadQuiz();
+            },
+            async handleLogin() {
+                const u = this.loginUsername.toLowerCase().trim();
+                if(this.loginRole === 'teacher') {
+                    if(u === this.setupAdmin.username && this.loginPassword === this.setupAdmin.password) { this.currentUser = this.setupAdmin; } 
+                    else { const t = this.teachersList.find(x => x.username === u && x.password === this.loginPassword); if(t) this.currentUser = t; else return alert("Sai tài khoản/Mật khẩu Giáo viên!"); }
+                } else {
+                    const s = this.studentsList.find(x => x.username === u && x.password === this.loginPassword);
+                    if(s) this.currentUser = s; else return alert("Sai tài khoản/Mật khẩu Học sinh!");
+                }
+                if(this.currentUser) {
+                    localStorage.setItem('edu_v22_session', JSON.stringify(this.currentUser));
+                    await this.loadData();
+                    if(this.joinLinkId && this.currentUser.role === 'student') this.loadQuiz();
+                }
+            },
+            handleLogout() { this.currentUser=null; localStorage.removeItem('edu_v22_session'); this.exitQuiz(); },
+            
+            // --- STUDIO TẠO ĐỀ ---
+            handleImageUpload(e, q) {
+                const file = e.target.files[0]; if(!file) return;
+                const reader = new FileReader(); reader.onload = (ev) => { q.imageUrl = ev.target.result; q.hasImage = true; }; reader.readAsDataURL(file);
+            },
+            getBlankQuestion() { return { type: 'trắc nghiệm', question: '', options: ['A. ', 'B. ', 'C. ', 'D. '], answer: '', explanation: '', hasPassage: false, passage: '', hasImage: false, imageUrl: '' }; },
+            startManualStudio() { if(!this.newQuiz.title) return alert("Nhập Tiêu đề bài thi!"); this.parsedQuestions = Array.from({length: this.manualQuestionCount}, () => this.getBlankQuestion()); this.studioMode = true; },
+
+            processToStudioSafe() {
+                if(!this.newQuiz.title) return alert("Nhập tiêu đề Đề thi!");
+                const qs = []; const blocks = this.newQuiz.rawText.replace(/\r\n/g, '\n').split(/\n\s*\n/); let currentPassage = "";
+                blocks.forEach(b => {
+                    b = b.trim(); if(!b) return;
+                    if(/^(Read|Đoạn văn|Đọc đoạn|Passage)/i.test(b)) { currentPassage = b; return; }
+                    const lines = b.split('\n').map(l=>l.trim()).filter(l=>l); let questionText = lines[0]; let opts = [], ans = '', exp = '', type = 'tự luận';
+                    const expLine = lines.findIndex(l => /^(giải thích|lưu ý|giải|gợi ý)[:\-\s]/i.test(l)); if(expLine !== -1) { exp = lines[expLine].replace(/^(giải thích|lưu ý|giải|gợi ý)[:\-\s]/i, '').trim(); lines.splice(expLine, 1); }
+                    const ansLine = lines.findIndex(l => /^(đáp án|answer|đ\/a)[:\-\s]/i.test(l)); if(ansLine !== -1) { ans = lines[ansLine].replace(/^(đáp án|answer|đ\/a)[:\-\s]/i, '').trim(); lines.splice(ansLine, 1); }
+                    opts = lines.filter(l => /^[A-E][\.\)\/]\s/i.test(l));
+                    if(opts.length >= 2) { type = 'trắc nghiệm'; questionText = lines.filter(l => !/^[A-E][\.\)\/]\s/i.test(l)).join('\n'); let match = ans.match(/^[A-E]/i); if(match) ans = match[0].toUpperCase(); } 
+                    else if(/true|false|not given/i.test(ans)) { type = 'tfng'; questionText = lines.join('\n'); } 
+                    else if(/\b([a-d]\s*-\s*){2,}[a-d]\b/i.test(ans) || /sắp xếp/i.test(questionText)) { type = 'sắp xếp'; questionText = lines.join('\n'); } 
+                    else if(ans !== '') { type = 'điền khuyết'; questionText = lines.join('\n'); } else { questionText = lines.join('\n'); }
+                    questionText = questionText.replace(/^(câu|bài|question)\s*\d+[:\.\-]?\s*/i, '');
+                    if(questionText) { qs.push({ type, question: questionText, options: opts, answer: ans, explanation: exp, hasPassage: currentPassage !== "", passage: currentPassage, hasImage: false, imageUrl: '' }); currentPassage = ""; }
+                });
+                this.parsedQuestions = qs.length > 0 ? qs : [this.getBlankQuestion()]; this.studioMode = true; setTimeout(() => { document.getElementById('main-scroll').scrollTop = 0; }, 50);
+            },
+            
+            async publishQuizToCloud() {
+                if(!confirm("Kích hoạt và đưa Đề thi này lên Server?")) return;
+                const id = Math.random().toString(36).substring(2,8).toUpperCase();
+                const qObj = { id, title: this.newQuiz.title, timeLimit: this.newQuiz.timeLimit||0, maxScore: this.newQuiz.maxScore||10, questions: this.parsedQuestions };
+                await setDoc(doc(db, "quizzes", id), qObj); this.dbQuizzes.push(qObj); this.studioMode = false; this.newQuiz = {title:'', timeLimit:0, maxScore:10, rawText:''};
+                alert("Thành công! Mã bộ đề: " + id);
+            },
+
+            // --- PHÂN TÍCH VÀ QUẢN LÝ ---
+            showAnalytics(quiz) {
+                const quizScores = this.scoresList.filter(s => s.quizId === quiz.id);
+                const wrongTally = {};
+                quizScores.forEach(s => { (s.wrongQuestions || []).forEach(qIdx => { wrongTally[qIdx] = (wrongTally[qIdx] || 0) + 1; }); });
+                
+                this.analyticsData = {
+                    quizTitle: quiz.title, totalAttempts: quizScores.length,
+                    details: Object.keys(wrongTally).map(idx => ({ qIndex: parseInt(idx), qText: quiz.questions[idx].question, wrongCount: wrongTally[idx] })).sort((a,b) => b.wrongCount - a.wrongCount)
+                };
+                this.analyticsModal = true;
+            },
+            copyShareLink(id) { const link = window.location.origin + window.location.pathname + '?quiz=' + id; navigator.clipboard.writeText(link); alert("Đã copy Link Chia Sẻ! Học sinh bấm vào sẽ mở thẳng đề."); },
+            async deleteQuiz(id) { if(confirm("Xóa vĩnh viễn đề này?")) { await deleteDoc(doc(db, "quizzes", id)); this.dbQuizzes = this.dbQuizzes.filter(q=>q.id!==id); } },
+            exportToCSV() {
+                let csv = "Thoi Gian,Hoc Sinh,Bai Lam,Ma De,Diem So,Thang Diem\n";
+                this.scoresList.forEach(s => csv += `${s.time},"${s.studentName}","${s.quizTitle}",${s.quizId},${s.score},${s.maxScore||10}\n`);
+                const dl = document.createElement("a"); dl.href = URL.createObjectURL(new Blob(["\ufeff"+csv], {type:'text/csv;charset=utf-8;'})); dl.download = `EduPro_Scores_${Date.now()}.csv`; dl.click();
+            },
+            copy(t) { navigator.clipboard.writeText(t); alert("Đã copy: " + t); },
+
+            // --- LÀM BÀI ---
+            startTimer(min) { this.timeRemaining = min*60; clearInterval(this.timerInterval); this.timerInterval = setInterval(()=> { this.timeRemaining--; if(this.timeRemaining<=0) { clearInterval(this.timerInterval); this.executeSubmit(); } }, 1000); },
+            loadQuiz() {
+                const id = this.joinLinkId.trim().toUpperCase(); if(!id) return;
+                const q = this.dbQuizzes.find(x=>x.id===id);
+                if(q) { 
+                    this.activeQuiz=q; this.studentAnswers={}; this.quizSubmitted=false; document.getElementById('main-scroll').scrollTop=0; 
+                    // Xóa tham số trên thanh địa chỉ sau khi load
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    if(q.timeLimit>0) this.startTimer(q.timeLimit); 
+                } else alert("Mã Đề Không Tồn Tại!");
+            },
+            exitQuiz() { clearInterval(this.timerInterval); this.activeQuiz=null; this.joinLinkId=''; this.quizSubmitted=false; window.history.replaceState({}, document.title, window.location.pathname); },
+            getOptionLetter(t) { const m=t.match(/^([A-E])/i); return m?m[1].toUpperCase():t; },
+            
+            async executeSubmit() {
+                if(this.quizSubmitted || !confirm("Kết thúc và Nộp bài thi?")) return;
+                clearInterval(this.timerInterval); let correctCount=0, total=0; let wrongList = [];
+                
+                this.activeQuiz.questions.forEach((q, i) => {
+                    if(q.answer) {
+                        total++; 
+                        const stu = (this.studentAnswers[i]||'').replace(/\s+/g, '').toLowerCase(); 
+                        const sys = q.answer.replace(/\s+/g, '').toLowerCase();
+                        let isCorr = false;
+                        if(q.type === 'trắc nghiệm' || q.type === 'chèn câu') { isCorr = (stu === sys.charAt(0) || stu === sys); }
+                        else { isCorr = (stu === sys); }
+                        
+                        if(isCorr) correctCount++; else wrongList.push(i);
+                    }
+                });
+                
+                const scale = this.activeQuiz.maxScore || 10;
+                let calculatedScore = total > 0 ? (correctCount / total) * scale : 0;
+                
+                this.rawScore = correctCount; this.gradeableCount = total;
+                this.finalScore = parseFloat(calculatedScore.toFixed(2));
+                this.quizSubmitted = true;
+                
+                const rec = {time: new Date().toLocaleString(), studentName: this.currentUser.name, quizId: this.activeQuiz.id, quizTitle: this.activeQuiz.title, score: this.finalScore, maxScore: scale, totalGradeable: total, rawScore: correctCount, wrongQuestions: wrongList};
+                await addDoc(collection(db, "scores"), rec); this.scoresList.push(rec); document.getElementById('main-scroll').scrollTop = 0;
+            },
+            isCorrect(i) {
+                const q = this.activeQuiz.questions[i]; if(!q.answer) return false;
+                const stu = (this.studentAnswers[i]||'').replace(/\s+/g, '').toLowerCase(); const sys = q.answer.replace(/\s+/g, '').toLowerCase();
+                if(q.type === 'trắc nghiệm' || q.type === 'chèn câu') return stu === sys.charAt(0) || stu === sys; return stu === sys;
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
